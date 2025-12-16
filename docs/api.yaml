@@ -1,0 +1,867 @@
+openapi: 3.0.1
+info:
+  title: pokerdice API
+  description: pokerdice API
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Lobbies
+  - name: Matches
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    authCookie:
+      type: apiKey
+      in: cookie
+      name: AuthCookie
+
+  schemas:
+    ApiResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {}
+        meta:
+          $ref: '#/components/schemas/Meta'
+    Meta:
+      type: object
+      properties:
+        total: { type: integer, minimum: 0, description: Total de elementos (ignora paginação) }
+        limit: { type: integer, minimum: 0 }
+        skip: { type: integer, minimum: 0 }
+        next: { type: string, format: uri, nullable: true }
+        prev: { type: string, format: uri, nullable: true }
+        traceId: { type: string, description: ID de correlação para debugging/observabilidade }
+    Problem:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+
+    # USERS
+    UserCreateInputModel:
+      type: object
+      required: [name, password, email]
+      properties:
+        name: { type: string }
+        password: { type: string }
+        email: { type: string, format: email }
+        invitationCode: { type: string, nullable: true }
+    UserLoginInputModel:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+    UserOutputModel:
+      type: object
+      properties:
+        userId: { type: integer }
+        username: { type: string }
+        email: { type: string, format: email }
+        balance: { type: number, format: float }
+    UserListOutputModel:
+      type: array
+      items: { $ref: '#/components/schemas/UserOutputModel' }
+    UserSessionOutputModel:
+      type: object
+      required: [userId, username]
+      properties:
+        userId: { type: integer }
+        username: { type: string }
+        token: { type: string, description: "Incluído se também suportarem header Authorization" }
+
+    # LOBBIES
+    LobbyCreateInputModel:
+      type: object
+      required: [name, maxPlayers, maxRounds, timeoutSeconds]
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        maxPlayers: { type: integer, minimum: 2 }
+        maxRounds: { type: integer, minimum: 1 }
+        timeoutSeconds: { type: integer, minimum: 5 }
+    LobbyStatus:
+      type: string
+      enum: [WAITING, ONGOING, FINISHED]
+    LobbyDetails:
+      type: object
+      required:
+        [lobbyId,name,hostId,maxPlayers,maxRounds,timeoutSeconds,status,createdAt,minPlayers,playerCount]
+      properties:
+        lobbyId: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        hostId: { type: integer }
+        minPlayers: { type: integer }
+        maxPlayers: { type: integer }
+        maxRounds: { type: integer }
+        timeoutSeconds: { type: integer }
+        status: { $ref: '#/components/schemas/LobbyStatus' }
+        createdAt: { type: integer, description: epoch ms }
+        playerCount: { type: integer }
+    LobbyPlayer:
+      type: object
+      properties:
+        userId: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        balance: { type: number, format: float }
+    LobbyWithPlayers:
+      allOf:
+        - $ref: '#/components/schemas/LobbyDetails'
+        - type: object
+          required: [players]
+          properties:
+            players:
+              type: array
+              items: { $ref: '#/components/schemas/LobbyPlayer' }
+    JoinLobbyResponse:
+      type: object
+      required: [status, lobbyId]
+      properties:
+        status: { type: string, enum: [joined, match-started] }
+        lobbyId: { type: integer }
+        matchId: { type: integer, nullable: true }
+
+    # MATCH / ROUNDS / TURNS / HANDS
+    MatchWithPlayers:
+      type: object
+      properties:
+        matchId: { type: integer }
+        lobbyId: { type: integer }
+        status: { type: string, enum: [ONGOING, FINISHED] }
+        players:
+          type: array
+          items: { $ref: '#/components/schemas/LobbyPlayer' }
+    RoundWithDetails:
+      type: object
+      properties:
+        roundId: { type: integer }
+        number: { type: integer }
+        blind: { type: number }
+        pot: { type: number }
+        currentTurn: { $ref: '#/components/schemas/Turn' }
+        players:
+          type: array
+          items: { $ref: '#/components/schemas/LobbyPlayer' }
+        hands:
+          type: array
+          items: { $ref: '#/components/schemas/Hand' }
+    Turn:
+      type: object
+      properties:
+        turnId: { type: integer }
+        userId: { type: integer }
+        number: { type: integer }
+        rollCount: { type: integer }
+        state: { type: string, enum: [ONGOING, ENDED] }
+    Hand:
+      type: object
+      properties:
+        roundId: { type: integer }
+        userId: { type: integer }
+        diceValues: { type: string, description: "ex: '1,2,3,4,5'" }
+        rank: { type: integer }
+        tieBreakerKey: { type: integer }
+    Roll:
+      type: object
+      properties:
+        rollId: { type: integer }
+        turnId: { type: integer }
+        createdAt: { type: integer }
+        heldMask: { type: string, description: "e.g. '01011'" }
+        diceValues: { type: string }
+    RollRequestInputModel:
+      type: object
+      properties:
+        heldMask:
+          type: string
+          description: Obrigatório a partir do 2º lançamento
+
+paths:
+  ############################################################
+  # AUTH
+  ############################################################
+  /api/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserLoginInputModel' }
+            examples:
+              alice:
+                summary: LOGIN ALICE
+                value: { username: "Alice", password: "teste" }
+              bob:
+                summary: LOGIN BOB
+                value: { username: "Bob", password: "teste" }
+              carol:
+                summary: LOGIN CAROL
+                value: { username: "Carol", password: "teste" }
+              dave:
+                summary: LOGIN DAVE
+                value: { username: "Dave", password: "teste" }
+      responses:
+        '200':
+          description: OK
+          headers:
+            Set-Cookie:
+              description: AuthCookie=...; HttpOnly; Secure; SameSite=Strict
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserSessionOutputModel' }
+              examples:
+                success:
+                  value:
+                    data:
+                      userId: 2
+                      username: Bob
+                      token: n3V3do3WCLY3YTmNt5ZotOUzjMlUzh78UHFyOF6D8Rk=
+                    meta: null
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/users/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      operationId: logout
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      responses:
+        '204':
+          description: No Content
+          headers:
+            Set-Cookie:
+              description: Expiração do AuthCookie
+              schema: { type: string }
+
+  ############################################################
+  # USERS
+  ############################################################
+  /api/users:
+    get:
+      tags: [Users]
+      summary: List users
+      operationId: fetchAllUsers
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: skip
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [asc, desc] }
+          description: Ordenação por nome
+        - in: query
+          name: contains
+          schema: { type: string }
+          description: Filtra por substring no nome
+        - in: query
+          name: name
+          schema: { type: string }
+          description: Filtro exato pelo nome name=Alice
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserListOutputModel' }
+                      meta: { $ref: '#/components/schemas/Meta' }
+              examples:
+                users:
+                  value:
+                    data:
+                      - userId: 1
+                        username: Alice
+                        email: alice@example.com
+                        balance: 10.0
+                      - userId: 2
+                        username: Bob
+                        email: bob@example.com
+                        balance: 8.5
+                    meta:
+                      total: 2
+                      limit: 2
+                      skip: 0
+                      next: null
+                      prev: null
+    post:
+      tags: [Users]
+      summary: Create user
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreateInputModel' }
+            examples:
+              example:
+                value:
+                  name: "Alice"
+                  email: "alice@example.com"
+                  password: "teste"
+                  invitationCode: "ABCD-1234"
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              description: URL do novo utilizador
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+
+  /api/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by id
+      operationId: fetchUserById
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      userId: 1
+                      username: Alice
+                      email: alice@example.com
+                      balance: 10.0
+                    meta: null
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  ############################################################
+  # LOBBIES
+  ############################################################
+  /api/lobby:
+    post:
+      tags: [Lobbies]
+      summary: Create lobby
+      operationId: createLobby
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LobbyCreateInputModel' }
+            examples:
+              create:
+                value:
+                  name: "Lobby Teste"
+                  description: "Lobby para testes"
+                  maxPlayers: 2
+                  maxRounds: 5
+                  timeoutSeconds: 30
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/LobbyDetails' }
+              examples:
+                created:
+                  value:
+                    data:
+                      lobbyId: 4
+                      name: "Lobby Teste"
+                      description: "Lobby para testes"
+                      hostId: 1
+                      minPlayers: 2
+                      maxPlayers: 2
+                      maxRounds: 5
+                      timeoutSeconds: 30
+                      status: "WAITING"
+                      createdAt: 1761091487943
+                      playerCount: 1
+                    meta: null
+        '400':
+          description: Invalid input
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/lobbies:
+    get:
+      tags: [Lobbies]
+      summary: List available lobbies
+      operationId: listLobbies
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: skip
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [asc, desc] }
+        - in: query
+          name: contains
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/LobbyDetails' }
+                      meta: { $ref: '#/components/schemas/Meta' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      - lobbyId: 4
+                        name: "Lobby Teste"
+                        description: "Lobby para testes"
+                        hostId: 1
+                        minPlayers: 2
+                        maxPlayers: 2
+                        maxRounds: 5
+                        timeoutSeconds: 30
+                        status: "ONGOING"
+                        createdAt: 1761091487943
+                        playerCount: 2
+                    meta:
+                      total: 1
+                      limit: 10
+                      skip: 0
+                      next: null
+                      prev: null
+
+  /api/lobbies/{id}:
+    get:
+      tags: [Lobbies]
+      summary: Get lobby by id (with players)
+      operationId: getLobbyById
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/LobbyWithPlayers' }
+              examples:
+                ok:
+                  value:
+                    data:
+                      lobbyId: 4
+                      name: "Lobby Teste"
+                      description: "Lobby para testes"
+                      hostId: 1
+                      minPlayers: 2
+                      maxPlayers: 2
+                      maxRounds: 5
+                      timeoutSeconds: 30
+                      status: "ONGOING"
+                      createdAt: 1761091487943
+                      playerCount: 2
+                      players:
+                        - userId: 1
+                          name: Alice
+                          email: alice@example.com
+                          balance: 10.0
+                        - userId: 3
+                          name: Carol
+                          email: carol@example.com
+                          balance: 4.0
+                    meta: null
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/lobbies/{id}/join:
+    post:
+      tags: [Lobbies]
+      summary: Join lobby (may start match)
+      operationId: joinLobby
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '201':
+          description: Created (joined or match started)
+          headers:
+            Location:
+              description: >
+                Se `status=joined`, aponta para /api/lobbies/{id};
+                se `status=match-started`, aponta para /api/matches/{matchId}
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/JoinLobbyResponse' }
+              examples:
+                joined:
+                  value:
+                    data: { status: joined, lobbyId: 4 }
+                    meta: null
+                matchStarted:
+                  value:
+                    data: { status: match-started, lobbyId: 4, matchId: 15 }
+                    meta: null
+        '404':
+          description: Lobby not found
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: Conflict (full / already started / already in lobby)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '500':
+          description: Internal error (e.g., match start error)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/lobbies/{id}/leave:
+    post:
+      tags: [Lobbies]
+      summary: Leave lobby
+      operationId: leaveLobby
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '204':
+          description: No Content
+        '404':
+          description: Lobby not found
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: User not in lobby
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  ############################################################
+  # MATCHES
+  ############################################################
+  /api/matches/{mid}:
+    get:
+      tags: [Matches]
+      summary: Get match
+      operationId: getMatch
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MatchWithPlayers' }
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/matches/{mid}/rounds/current:
+    get:
+      tags: [Matches]
+      summary: Get current round
+      operationId: getCurrentRound
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoundWithDetails' }
+        '400':
+          description: Invalid match state
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/matches/{mid}/rounds:
+    get:
+      tags: [Matches]
+      summary: List rounds
+      operationId: listRounds
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+
+  /api/matches/{mid}/rounds/{rid}:
+    get:
+      tags: [Matches]
+      summary: Get round details
+      operationId: getRoundDetails
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+        - in: path
+          name: rid
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoundWithDetails' }
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/matches/{mid}/turns/current:
+    get:
+      tags: [Matches]
+      summary: Get current turn
+      operationId: getCurrentTurn
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+        '400':
+          description: Invalid match state
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/matches/{mid}/hands:
+    get:
+      tags: [Matches]
+      summary: Get hand history
+      operationId: getHandHistory
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+
+  /api/matches/{mid}/timeline:
+    get:
+      tags: [Matches]
+      summary: Get match timeline (turns)
+      operationId: getMatchTimeline
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiResponse' }
+
+  /api/matches/{mid}/turns/current/roll:
+    post:
+      tags: [Matches]
+      summary: Roll dice
+      operationId: rollDice
+      security:
+        - bearerAuth: []
+        - authCookie: []
+      parameters:
+        - in: path
+          name: mid
+          required: true
+          schema: { type: integer, format: int32 }
+      requestBody:
+        required: false   # 1º lançamento não precisa de body
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RollRequestInputModel' }
+            examples:
+              firstRoll:
+                summary: First roll (sem body)
+                value: {}
+              subsequentRoll:
+                summary: Subsequent roll
+                value: { heldMask: "11100" }
+              invalidHeldMask:
+                summary: Subsequent roll (mask inválida / vazia)
+                value: { heldMask: "" }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Roll' }
+        '400':
+          description: Invalid state / missing or invalid heldMask
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }

@@ -1,0 +1,30 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+
+}
+
+group = 'pt.isel.daw'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.jetbrains.kotlin:kotlin-test'
+
+    implementation(project(":domain"))
+    implementation(project(":services"))
+
+    implementation("org.springframework:spring-webmvc:6.2.10")
+    compileOnly("jakarta.servlet:jakarta.servlet-api:6.1.0")
+
+    implementation("org.slf4j:slf4j-api:2.0.16")
+}
+
+test {
+    useJUnitPlatform()
+}
+kotlin {
+    jvmToolchain(21)
+}

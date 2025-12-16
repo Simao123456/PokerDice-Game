@@ -1,0 +1,285 @@
+@token_alice=nlSfnguaqoYPiDf4T8WakLc0yqjZtn8dfewl9kW-yn0=
+@token_bob=-9dIL6Nl6X_Zzt9Dr5n4qWeQkvSIrz9lhlFVpHv-2wM=
+@token_carol=XScCRxnRZ_mIU0oOUzdIbwudCug5IxK0K0IPGcfv5Tg=
+@token_dave=SiIFzTCdLasQup3qugWvhs1dlrndHxGuT5AdRXAIUQI=
+
+### LOBBIES #####
+
+#### GET LOBBIES WITH COOKIE
+GET http://localhost:8080/api/lobbies HTTP/1.1
+Cookie: AuthCookie={{token_alice}}
+
+
+#### GET LOBBIES WITH BEARER TOKEN
+GET http://localhost:8080/api/lobbies HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+### LOGIN ALICE
+POST http://localhost:8080/api/login HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "username": "Alice",
+  "password": "teste"
+}
+
+### LOGIN BOB
+POST http://localhost:8080/api/login HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "username": "Bob",
+  "password": "teste"
+}
+
+### LOGIN CAROL
+POST http://localhost:8080/api/login HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "username": "Carol",
+  "password": "teste"
+}
+
+### LOGIN DAVE
+POST http://localhost:8080/api/login HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "username": "Dave",
+  "password": "teste"
+}
+
+
+### USERS TESTS #####
+
+### GET ALL USERS
+GET http://localhost:8080/api/users
+Authorization: Bearer {{token_alice}}
+
+### GET USER BY ID
+GET http://localhost:8080/api/users/1
+Authorization: Bearer {{token_alice}}
+
+
+### GET USERS BY NAME (Alice)
+GET http://localhost:8080/api/users?name=Alice
+Authorization: Bearer {{token_alice}}
+
+### GET USERS CONTAINING "ob"
+GET http://localhost:8080/api/users?contains=ob
+Authorization: Bearer {{token_alice}}
+
+### GET USERS ORDERED BY NAME ASC
+GET http://localhost:8080/api/users?sort=asc
+Authorization: Bearer {{token_alice}}
+
+### GET USERS ORDERED BY NAME DESC
+GET http://localhost:8080/api/users?sort=desc
+Authorization: Bearer {{token_alice}}
+
+### GET ONLY 2 USERS
+GET http://localhost:8080/api/users?limit=2
+Authorization: Bearer {{token_alice}}
+
+### GET USERS SKIPPING FIRST 2
+GET http://localhost:8080/api/users?skip=2
+Authorization: Bearer {{token_alice}}
+
+### COMBINATION: Contains + Sort + Limit
+GET http://localhost:8080/api/users?contains=ob&sort=asc&limit=3
+Authorization: Bearer {{token_alice}}
+
+
+### LOGOUT
+POST http://localhost:8080/api/users/logout
+Authorization: Bearer {{token_dave}}
+
+
+
+
+
+
+### LOBBIES TESTS #####
+
+
+#### GET LOBBIES
+GET http://localhost:8080/api/lobbies HTTP/1.1
+Cookie: AuthCookie={{token_alice}}
+
+
+### CREATE LOBBY
+POST http://localhost:8080/api/lobby HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{token_alice}}
+
+{
+  "name": "Lobby Teste",
+  "description": "Lobby para testes",
+  "maxPlayers": 1,
+  "maxRounds": 5,
+  "timeoutSeconds": 10
+}
+### CREATE LOBBY
+POST http://localhost:8080/api/lobby HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{token_alice}}
+
+{
+  "name": "Lobby Teste",
+  "description": "Lobby para testes",
+  "maxPlayers": 2,
+  "maxRounds": 2,
+  "timeoutSeconds": 30
+}
+
+
+
+
+#### GET LOBBIES SORTED
+GET http://localhost:8080/api/lobbies?sort=desc HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+#### GET LOBBIES SORTED ASC
+GET http://localhost:8080/api/lobbies?sort=asc HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+#### GET ONLY 2 LOBBIES
+GET http://localhost:8080/api/lobbies?limit=2 HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+#### GET LOBBIES SKIPPING FIRST 2
+GET http://localhost:8080/api/lobbies?limit=2&skip=2 HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+#### GET LOBBIES WHERE NAME CONTAINS
+GET http://localhost:8080/api/lobbies?contains=ta HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+#### GET LOBBY BY ID
+GET http://localhost:8080/api/lobbies/3 HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+
+### JOIN LOBBY (VAI FALHAR PORQUE JA ESTA NO LOBBY)
+POST http://localhost:8080/api/lobbies/3/join HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+### JOIN LOBBY (VAI DAR CERTO)
+POST http://localhost:8080/api/lobbies/3/join HTTP/1.1
+Authorization: Bearer {{token_carol}}
+
+### JOIN LOBBY (VAI FALHAR PORQUE JA COMEÇOU O JOGO)
+POST http://localhost:8080/api/lobbies/3/join HTTP/1.1
+Authorization: Bearer {{token_bob}}
+
+
+### LEAVE LOBBY (VAI FALHAR PORQUE NÂO EXISTE)
+POST http://localhost:8080/api/lobbies/15/leave HTTP/1.1
+Authorization: Bearer {{token_alice}}
+
+
+
+
+
+
+
+
+
+
+
+### MATCH  TESTS #####
+
+
+### GET MATCH BY ID
+GET http://localhost:8080/api/matches/2
+Authorization: Bearer {{token_alice}}
+
+### LIST ROUNDS BY MATCH ID
+GET http://localhost:8080/api/matches/2/rounds
+Authorization: Bearer {{token_alice}}
+
+### LIST CURRENT ROUND BY MATCH ID
+GET http://localhost:8080/api/matches/2/rounds/current
+Authorization: Bearer {{token_alice}}
+
+
+### GET CURRENT TURN BY MATCH ID
+GET http://localhost:8080/api/matches/2/turns/current
+Authorization: Bearer {{token_alice}}
+
+### GET HAND HISTORY BY MATCH ID
+GET http://localhost:8080/api/matches/2/hands
+Authorization: Bearer {{token_alice}}
+
+
+### Alice Game
+
+
+### ROLL DICE (First Roll)
+POST http://localhost:8080/api/matches/2/turns/current/roll
+Authorization: Bearer {{token_alice}}
+
+### ROLL DICE (Subsequent Rolls)
+POST http://localhost:8080/api/matches/2/turns/current/roll
+Content-Type: application/json
+Authorization: Bearer {{token_alice}}
+
+{
+  "heldMask": "11100"
+}
+
+### ROLL DICE (Subsequent Rolls)
+POST http://localhost:8080/api/matches/2/turns/current/roll
+Content-Type: application/json
+Authorization: Bearer {{token_alice}}
+
+{
+  "heldMask": ""
+}
+
+
+### GET HAND HISTORY BY MATCH ID
+GET http://localhost:8080/api/matches/2/hands
+Authorization: Bearer {{token_alice}}
+
+### GET MATCH BY ID
+GET http://localhost:8080/api/matches/2
+Authorization: Bearer {{token_alice}}
+
+
+### Carol Game
+
+### ROLL DICE (First Roll)
+POST http://localhost:8080/api/matches/2/turns/current/roll
+Authorization: Bearer {{token_carol}}
+
+### ROLL DICE (Subsequent Rolls)
+POST http://localhost:8080/api/matches/2/turns/current/roll
+Content-Type: application/json
+Authorization: Bearer {{token_carol}}
+
+{
+  "heldMask": "11100"
+}
+
+### ROLL DICE (Subsequent Rolls)
+POST http://localhost:8080/api/matches/2/turns/current/roll
+Content-Type: application/json
+Authorization: Bearer {{token_carol}}
+
+{
+  "heldMask": ""
+}
+
+### GET HAND HISTORY BY MATCH ID
+GET http://localhost:8080/api/matches/2/hands
+Authorization: Bearer {{token_alice}}
+
+### GET MATCH BY ID
+GET http://localhost:8080/api/matches/2
+Authorization: Bearer {{token_alice}}

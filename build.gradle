@@ -1,0 +1,68 @@
+plugins {
+	id 'org.jetbrains.kotlin.jvm' version '1.9.25'
+	id 'org.jetbrains.kotlin.plugin.spring' version '1.9.25'
+	id 'org.springframework.boot' version '3.5.6'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'pt.isel.daw'
+version = '0.0.1-SNAPSHOT'
+description = 'Demo project for Spring Boot'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+
+kotlin {
+	compilerOptions {
+		freeCompilerArgs.addAll '-Xjsr305=strict'
+	}
+}
+
+def docker = {
+	def os = org.gradle.internal.os.OperatingSystem.current()
+	if (os.isMacOsX()) return "/usr/local/bin/docker"
+	if (os.isWindows()) return "docker"
+	return "docker" // Linux/others
+}.call()
+def composeFile = "${rootProject.projectDir}/docker-compose.yml"
+
+// DEV
+tasks.register('dbDevUp', Exec) {
+	commandLine docker, 'compose', '-f', composeFile, 'up', '-d', '--build', '--force-recreate', 'db-dev'
+}
+tasks.register('dbDevWait', Exec) {
+	dependsOn 'dbDevUp'
+	// nome do container definido no compose:
+	commandLine docker, 'exec', 'db-pokerdice-dev', '/usr/local/bin/wait-for-postgres.sh', 'localhost'
+}
+tasks.register('dbDevStop', Exec) {
+	commandLine docker, 'compose', '-f', composeFile, 'stop', 'db-dev'
+}
+tasks.register('dbDevRm', Exec) {
+	dependsOn 'dbDevStop'
+	commandLine docker, 'compose', '-f', composeFile, 'rm', '-f', 'db-dev'
+}
+
+// PROD
+tasks.register('dbProdUp', Exec) {
+	commandLine docker, 'compose', '-f', composeFile, 'up', '-d', '--build', '--force-recreate', 'db-prod'
+}
+tasks.register('dbProdStop', Exec) {
+	commandLine docker, 'compose', '-f', composeFile, 'stop', 'db-prod'
+}
+tasks.register('dbProdRm', Exec) {
+	dependsOn 'dbProdStop'
+	commandLine docker, 'compose', '-f', composeFile, 'rm', '-f', 'db-prod'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

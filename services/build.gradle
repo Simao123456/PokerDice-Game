@@ -1,0 +1,32 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'org.jetbrains.kotlin.plugin.spring'
+    id 'io.spring.dependency-management'   
+}
+group = 'pt.isel.daw'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api(project(":domain"))
+    implementation(project(":repository"))
+
+    implementation("org.springframework:spring-webmvc:6.2.10")
+    implementation 'org.jetbrains.kotlin:kotlin-reflect'
+    // To get the DI annotation
+    implementation("jakarta.inject:jakarta.inject-api:2.0.1")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.4.1")
+
+}
+
+
+test {
+    useJUnitPlatform()
+}
+kotlin {
+    jvmToolchain(21)
+}
